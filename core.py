@@ -185,7 +185,11 @@ def analyze(text: str, codebook: dict) -> Analysis:
                                        confidence=float(ent["confidence"])))
             expanded.append(codebook[low]["expansions"][0])
             continue
-        if low in ACTION_VERBS and low not in COMMON:
+        # NOTE: no COMMON guard here. "text"/"check"/"clean" are common words
+        # AND action verbs; the old guard masked them so "text Luis re dinner"
+        # never registered a messaging action (found in 2026-06-11 design
+        # review). A false manifest is harmless (non-interrupting context).
+        if low in ACTION_VERBS:
             if ACTION_VERBS[low] not in a.action_classes:
                 a.action_classes.append(ACTION_VERBS[low])
             expanded.append(tok)
@@ -251,7 +255,7 @@ PIDGIN_DIR = Path(__file__).parent
 CONFIG_PATH = PIDGIN_DIR / "config.yaml"
 STATS_PATH = PIDGIN_DIR / "stats.jsonl"
 
-DEFAULT_CONFIG = {"enabled": True, "transparency": False}
+DEFAULT_CONFIG = {"enabled": True, "transparency": False, "egress": True}
 
 # ── model tiers ───────────────────────────────────────────────────────────────
 # Frontier-class models read telegraphic input fine with just a gloss; small
@@ -365,6 +369,133 @@ def transparency_line(a: Analysis) -> str | None:
     gauge = f" | ~{s['pct']:.0f}% denser than verbose" if s["saved"] else ""
     gate = f" | gate: {a.decision}" if a.decision in ("confirm", "manifest") else ""
     return f"pidgin: {', '.join(parts)}{gauge}{gate}"
+
+
+# ── egress compressor ─────────────────────────────────────────────────────────
+# Deterministic ONLY, per the 2026-06-11 two-reviewer design loop (Aria +
+# Claude). The LLM-rewrite layer was CUT from the hot path: a token-survival
+# gate is structurally blind to role reversal, question-to-imperative flips,
+# modality, and by-vs-to on numbers; plus it breaks prompt-cache determinism
+# and replay. What remains is provably meaning-preserving:
+#   1. span freezing: quoted text, code fences, URLs, paths, emails are
+#      untouchable (literal payloads must survive byte-identical)
+#   2. conservative filler strip: politeness and throat-clearing only,
+#      never modals/auxiliaries (question-to-imperative hazard)
+#   3. transparent-code substitution: only codebook entries flagged
+#      transparent (readable by frontier models without a glossary),
+#      single-expansion only (the cr collision round-trip hazard),
+#      never durations (the 3m months-vs-minutes hazard)
+#   4. whitespace collapse
+# Verification: numbers and capitalized tokens must survive 1:1 or the
+# original text ships unchanged (fallback-on-any-doubt).
+
+_FROZEN_RE = re.compile(
+    r"```.*?```"            # code fences
+    r"|`[^`]*`"             # inline code
+    r'|"[^"]*"'             # double-quoted payloads
+    r"|https?://\S+"        # URLs
+    r"|\S+@\S+\.\S+"        # emails
+    r"|(?:~|\.)?/[\w.~/-]+",  # file paths
+    re.S)
+
+_FILLER_RES = [
+    re.compile(r"^(hey|hi|hello|yo|good (?:morning|afternoon|evening))[,!. ]+", re.I),
+    re.compile(r"[ ]?\b(?:please|kindly)\b,?", re.I),
+    re.compile(r"\b(?:i would like you to|i'd like you to|i want you to|i need you to|go ahead and)\b[ ]?", re.I),
+    re.compile(r"[ ]?\b(?:when you get a chance|if you don't mind|thanks in advance)\b[,.]?", re.I),
+    re.compile(r"[ ]?(?:thanks|thank you|thx|cheers)[!. ]*$", re.I),
+]
+
+_NUM_RE = re.compile(r"\d+(?:\.\d+)?")
+_CAP_RE = re.compile(r"\b[A-Z][a-zA-Z]+\b")
+
+
+def compress_text(text: str, codebook: dict) -> dict:
+    """Deterministic egress compression. Returns {text, changed, savings_est}.
+
+    Falls back to the original on ANY verification doubt. Never compresses
+    inside frozen spans, never emits ambiguous or duration shorthand.
+    """
+    original = text
+
+    # 1. freeze literal spans
+    frozen: list[str] = []
+    def _freeze(m: re.Match) -> str:
+        frozen.append(m.group(0))
+        return f"\x00{len(frozen)-1}\x00"
+    work = _FROZEN_RE.sub(_freeze, text)
+
+    # 2. filler strip (remember what we removed so the verifier can exempt it)
+    stripped_words: set[str] = set()
+    for fr in _FILLER_RES:
+        for m in fr.finditer(work):
+            stripped_words |= set(_CAP_RE.findall(m.group(0)))
+        work = fr.sub("", work)
+
+    # 3. transparent-code substitution, longest expansion first
+    subs = []
+    for code, ent in codebook.items():
+        if not ent.get("transparent") or len(ent.get("expansions", [])) != 1:
+            continue
+        exp = ent["expansions"][0]
+        if len(code) + 3 >= len(exp):   # must be meaningfully shorter
+            continue
+        subs.append((exp, code))
+    for exp, code in sorted(subs, key=lambda s: -len(s[0])):
+        work = re.sub(r"\b" + re.escape(exp) + r"\b", code, work, flags=re.I)
+
+    # 4. whitespace collapse + orphan punctuation from stripped trailers
+    work = re.sub(r"[ \t]{2,}", " ", work)
+    work = re.sub(r"\n{3,}", "\n\n", work).strip()
+    work = re.sub(r"[,;]$", ".", work)
+
+    # restore frozen spans
+    def _thaw(m: re.Match) -> str:
+        return frozen[int(m.group(1))]
+    work = re.sub(r"\x00(\d+)\x00", _thaw, work)
+
+    # verify: numbers and capitalized tokens (proper nouns) survive 1:1.
+    # Codes may absorb capitalized words ("Claude Code" -> cc), so compare
+    # against the re-expanded form, which restores them.
+    reexpanded = expand_text(work, codebook)
+    caps_needed = set(_CAP_RE.findall(original)) - stripped_words
+    ok = (sorted(_NUM_RE.findall(original)) == sorted(_NUM_RE.findall(reexpanded))
+          and caps_needed <= set(_CAP_RE.findall(reexpanded) + _CAP_RE.findall(work)))
+    if not ok or not work:
+        return {"text": original, "changed": False, "savings_est": 0}
+
+    saved = max(0, _est_tokens(original) - _est_tokens(work))
+    return {"text": work, "changed": work != original, "savings_est": saved}
+
+
+def dedup_exact(text: str, context_texts: list[str], min_len: int = 120) -> str:
+    """Replace any paragraph that appears byte-identical in recent context
+    with a short reference marker. Provably lossless (exact match only)."""
+    seen = set()
+    for c in context_texts:
+        for para in c.split("\n\n"):
+            if len(para) >= min_len:
+                seen.add(para.strip())
+    out = []
+    for para in text.split("\n\n"):
+        if para.strip() in seen:
+            out.append("[unchanged from my earlier message, same paragraph]")
+        else:
+            out.append(para)
+    return "\n\n".join(out)
+
+
+def log_egress(original: str, sent: str, surface: str) -> None:
+    """Stats record for egress compression. Honest accounting note: these are
+    user-string deltas; cli.py audit reports the assembled-call denominator."""
+    try:
+        rec = {"ts": round(time.time(), 1), "surface": surface, "kind": "egress",
+               "orig_tokens": _est_tokens(original), "sent_tokens": _est_tokens(sent),
+               "saved": max(0, _est_tokens(original) - _est_tokens(sent))}
+        with STATS_PATH.open("a") as f:
+            f.write(json.dumps(rec) + "\n")
+    except Exception:
+        pass
 
 
 def check_response(a: Analysis, tool_calls: list[str]) -> str | None:

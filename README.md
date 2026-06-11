@@ -2,88 +2,74 @@
 
 **Grammarly in reverse.** It makes your writing worse for humans and perfect for machines.
 
-pidgin is a learned shorthand layer between you and your AI. You type telegraphic, abbreviated, half-lazy messages; your AI reads them perfectly, because pidgin maintains a personal codebook of *your* shorthand and injects the glossary right where the model needs it. Over time, you and your AI develop a shared dialect that nobody else speaks.
+pidgin is a token-compression layer between you and your AI. **You type like a normal person; the model receives a tightened version; nothing changes for you.**
 
 ```
-you type:    remind 8d: circle back w/ CC re stale tasks, no me
-model sees:  remind 8 days: circle back with Claude Code re stale tasks, no me
-             (plus your glossary, plus a safety gate on the action)
+you type:    Hey, could you please send Luis this exact message: "the build is
+             fixed, ship it" and please cc Oscar on the git repository thread. Thanks!
+
+model sees:  send Luis this exact message: "the build is fixed, ship it"
+             and cc Oscar on repo thread.
 ```
 
-## Why
+Notice what survived untouched: the quoted payload (byte-identical), every name, the meaning. That's the design constraint everything else serves.
 
-Every word you type at an AI costs tokens, latency, and your own attention. Most of those words are social padding the model never needed. Trimming them by hand feels rude and reads ambiguous; pidgin makes it safe to be terse.
+## Two directions, one codebook
 
-## What it actually does
+**Egress (default on): you type normal, pidgin compresses outbound.** Deterministic only, provably meaning-preserving:
+- *Span freezing*: quoted text, code fences, URLs, file paths, and emails are untouchable
+- *Filler strip*: politeness and throat-clearing only ("could you please", greetings, trailing thanks); never modals or auxiliaries, so a musing can't become an order
+- *Transparent-code substitution*: only codebook entries any frontier model reads without a glossary
+- *Verification*: every number and proper noun must survive into the compressed form, or your original text ships unchanged. Fallback-on-any-doubt is the rule.
 
-1. **Codebook**: a plain YAML dictionary of your shorthand (`wmb: work MacBook`). Human-readable, portable, shareable, diffable. No ML weights, no embeddings required, no lock-in.
-2. **Glossary injection**: each message is scanned; matched codes are injected as context so any model recovers your intent. Frontier models get your dense text untouched.
-3. **Action-gated confirmation**: the safety idea that makes terseness trustworthy. A misread *question* costs one clarifying turn, so it never interrupts. A misread *instruction* could send the wrong email, so when a message requests an action AND contains uncertain shorthand, the model must echo its reading in one line before acting. In measurement on real traffic this fires on roughly 0% of normal messages.
-4. **Model tiers**: small local models demonstrably misread dense input (in our paired-task bench a 7B model was intent-equivalent on only 1 of 5 dense tasks). pidgin detects the model class: frontier models get dense text + glossary; local models get the text deterministically expanded first.
-5. **The miner**: scans your own chat history for shorthand you already invented and phrases you repeat, then proposes codebook entries. Nothing lands without your approval. Your dialect grows out of how you already talk.
+**Ingress: if you drift into shorthand yourself (most people do, fast), pidgin makes it safe.** A glossary of your personal codes is injected so any model recovers your intent, and the action gate interrupts only when an *action* rides on an *ambiguous* reading: a misread question costs one clarifying turn, so questions never interrupt. Measured interrupt rate on real traffic: 0%.
+
+**The codebook** is a plain YAML file of your shorthand, mined from your own chat history by `miner.py` (you approve every entry). Human-readable, diffable, shareable, portable to a different AI entirely. No weights, no lock-in.
 
 ## Honest expectations
 
-- Measured on 20 real messages with tiktoken: **~62% input-token savings (2.6x)** vs the verbose equivalent. Best case ~74% on chatty status messages; worst case ~49% on already-dense technical asks.
-- Input tokens are the cheap side of the ledger. The bigger wins are your keystrokes, your attention, and (roadmap) dense *output* you read natively.
-- This is a young project. The gate heuristics are deliberately simple and auditable; expect to approve/reject miner proposals rather than trust them blindly.
+We had this design adversarially reviewed (two independent AI reviewers, full code access) before building, and the numbers below reflect that loop, not marketing:
+
+- **Egress on natural chatty messages: 10-25% of message tokens.** Deterministic, zero meaning risk, zero latency. On already-terse messages it does nothing, by design.
+- **Ingress with adopted shorthand: up to ~60% (2.6x), measured with tiktoken on real messages.** That ceiling needs *you* to type dense; pidgin makes that safe rather than forcing it.
+- **Your message is the smallest part of the API call.** System prompts, history, and injected context dominate. pidgin's biggest single win in our own stack was compressing a 109-token scheduler boilerplate that rode every automated job, down to 41. Hunt your templates; `cli.py audit` shows the assembled-call picture so you measure the right denominator.
+- **What we deliberately did NOT build**: an LLM that paraphrases your words in the hot path. A token-survival check is structurally blind to role reversal ("Oscar pays Luis" vs "Luis pays Oscar"), question-to-imperative flips, modality loss, and by-vs-to on numbers. Until that's solved, paraphrase compression stays out of the send path. Deterministic or nothing.
+- Small local models misread dense text (measured: a 7B was intent-equivalent on 1 of 5 dense tasks), so pidgin's tier switch *expands* text for them instead. Compression is for models that can take it.
 
 ## Install (AI-first)
 
-The fastest path: **paste this repo URL at your AI agent and say "install this".** AGENTS.md contains step-by-step instructions written for agents. Verified flows:
+Fastest path: **paste this repo URL at your AI agent and say "install this".** AGENTS.md has agent-directed instructions. Flows:
 
-### Claude Code (as a plugin)
+**Claude Code** (plugin, ships its own hook): `/plugin marketplace add <repo-url>` then `/plugin install pidgin`, or clone and run `./install.sh`.
 
-```
-/plugin marketplace add <this-repo-url>   # or: clone + point at the directory
-/plugin install pidgin
-```
+**Hermes gateway**: `git clone <repo-url> ~/pidgin && ~/pidgin/install.sh` then restart the gateway.
 
-The plugin ships a UserPromptSubmit hook; no settings editing. Alternatively clone anywhere and run `./install.sh`, which merges the hook into `~/.claude/settings.json` idempotently.
-
-### Hermes gateway
-
-```
-git clone <this-repo-url> ~/pidgin && ~/pidgin/install.sh
-```
-
-Detects Hermes, installs the `pre_llm_call` plugin into `~/.hermes/plugins/pidgin-gate`, seeds a starter codebook. Active on the next gateway restart.
-
-### Anything else (Codex, OpenClaw, custom stacks)
-
-`core.py` is dependency-light (stdlib + PyYAML) and stack-agnostic. One call does everything:
-
-```python
-from core import prepare_input, load_codebook
-out = prepare_input(user_text, model_name, load_codebook("codebook.yaml"))
-# out["text"]    -> what to send as the user message
-# out["context"] -> glossary + gate instruction to inject (None if not needed)
-```
-
-If your stack can inject system context per turn, you can host pidgin.
+**Any other stack**: `core.py` is stdlib + PyYAML. Egress: `compress_text(text, codebook)`. Ingress: `prepare_input(text, model, codebook)`. If your stack can modify an outbound message or inject context, you can host pidgin.
 
 ## Use
 
 ```
-python3 cli.py "remind 8d: review cr w/ oscar"   # see the gate decision
-python3 cli.py translate "getting wmb + coffee"  # preview the expansion
-python3 cli.py stats                             # your reduction gauge
-python3 cli.py show on                           # display translations inline
-python3 cli.py enable|disable                    # master switch, no restarts
-python3 miner.py scan                            # mine your history (Hermes/SQLite today)
-python3 miner.py approve <code> [expansion]      # grow your dialect
+python3 cli.py stats              # what egress + ingress saved, separately
+python3 cli.py audit              # assembled-call accounting (the honest denominator)
+python3 cli.py translate "msg"    # preview a reading
+python3 cli.py egress on|off      # outbound compression toggle
+python3 cli.py show on            # display translations inline
+python3 cli.py enable|disable     # master switch, hot-read, no restarts
+python3 miner.py scan             # mine your history for codebook candidates
+python3 test_smoke.py             # verify an install
 ```
 
 ## The bet
 
-Compression research keeps trying to shrink machine context with lossy ML. pidgin bets the other direction: the human side of the conversation is the most compressible part, the user's own history is the best training data, and a transparent dictionary beats an opaque model. Your codebook is a file you can read, edit, share with a friend, or carry to a different AI entirely.
+Compression research keeps shrinking machine context with lossy ML. pidgin bets the other way: the human side of the conversation is the most compressible part, your own history is the best training data, and a transparent dictionary you can read beats an opaque model you can't audit. When the stakes are your own instructions, lossless-or-nothing wins.
 
 ## Roadmap
 
-- Dense output mode (the model answers in your dialect on surfaces you choose)
-- OpenAI-compatible proxy mode (host pidgin in front of any API)
-- Codebook merge tooling (swap dialects between users)
-- Embedding-based code matching
+- Exact-match re-quote dedup wired into more surfaces (function exists: `dedup_exact`)
+- Dense output mode (the model answers in your dialect on surfaces you choose; output tokens are where the money is)
+- OpenAI-compatible proxy mode
+- Codebook merge tooling
+- Offline (never hot-path) LLM rewrite experiments, judged by paired-task equivalence benching
 
 ## License
 

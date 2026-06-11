@@ -7,8 +7,8 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from core import (analyze, check_response, expand_text, load_codebook,
-                  model_tier, prepare_input)
+from core import (analyze, check_response, compress_text, expand_text,
+                  load_codebook, model_tier, prepare_input)
 
 BOOK = load_codebook(Path(__file__).parent / "codebook.seed.yaml")
 
@@ -20,6 +20,25 @@ CASES = [
     ("thoughts on the dash layout?", "gloss"),          # known code, no action
     ("had coffee this morning", "pass"),                # plain chat
 ]
+
+
+def egress_smoke() -> bool:
+    """Deterministic compression must preserve payloads, names, numbers;
+    fall back rather than risk meaning."""
+    ok = True
+    r = compress_text('Hey, could you please send Luis this: "ship it" thanks!', BOOK)
+    good = '"ship it"' in r["text"] and "Luis" in r["text"] and "please" not in r["text"]
+    ok &= good
+    print(f"[{'OK ' if good else 'FAIL'}] egress strips filler, freezes payload: {r['text']}")
+    r2 = compress_text("increase the timeout by 50 percent, not to 50", BOOK)
+    good = r2["text"].count("50") == 2 and "not" in r2["text"]
+    ok &= good
+    print(f"[{'OK ' if good else 'FAIL'}] egress preserves numbers and negation")
+    r3 = compress_text("Could you maybe deploy on Friday? Not sure it's ready.", BOOK)
+    good = "maybe" in r3["text"] and "?" in r3["text"]
+    ok &= good
+    print(f"[{'OK ' if good else 'FAIL'}] egress never strips modality or questions")
+    return ok
 
 
 def main() -> int:
@@ -49,6 +68,7 @@ def main() -> int:
     ok &= good
     print(f"[{'OK ' if good else 'FAIL'}] silent-drop post-check")
 
+    ok &= egress_smoke()
     print("ALL PASS" if ok else "FAILURES PRESENT")
     return 0 if ok else 1
 
