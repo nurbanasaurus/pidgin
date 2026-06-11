@@ -36,26 +36,33 @@ We had this design adversarially reviewed (two independent AI reviewers, full co
 - **What we deliberately did NOT build**: an LLM that paraphrases your words in the hot path. A token-survival check is structurally blind to role reversal ("Oscar pays Luis" vs "Luis pays Oscar"), question-to-imperative flips, modality loss, and by-vs-to on numbers. Until that's solved, paraphrase compression stays out of the send path. Deterministic or nothing.
 - Small local models misread dense text (measured: a 7B was intent-equivalent on 1 of 5 dense tasks), so pidgin's tier switch *expands* text for them instead. Compression is for models that can take it.
 
-## Install (AI-first)
+## Install
 
-Fastest path: **paste this repo URL at your AI agent and say "install this".** AGENTS.md has agent-directed instructions. Flows:
+Fastest path: **paste this repo URL at your AI agent and say "install this".** AGENTS.md has agent-directed instructions. Full walkthroughs per stack (including custom stacks like Codex or OpenClaw) live in **[docs/INSTALL.md](docs/INSTALL.md)**.
 
-**Claude Code** (plugin, ships its own hook): `/plugin marketplace add <repo-url>` then `/plugin install pidgin`, or clone and run `./install.sh`.
+**Claude Code** (plugin, ships its own hook and `/pidgin` command):
+```
+/plugin marketplace add nurbanasaurus/pidgin
+/plugin install pidgin
+```
 
-**Hermes gateway**: `git clone <repo-url> ~/pidgin && ~/pidgin/install.sh` then restart the gateway.
+**Hermes gateway** (hook + `/pidgin` command on Telegram/Discord/CLI):
+```
+git clone https://github.com/nurbanasaurus/pidgin ~/pidgin
+~/pidgin/install.sh && hermes plugins enable pidgin-gate   # then restart the gateway
+```
 
-**Any other stack**: `core.py` is stdlib + PyYAML. Egress: `compress_text(text, codebook)`. Ingress: `prepare_input(text, model, codebook)`. If your stack can modify an outbound message or inject context, you can host pidgin.
+**Any other stack**: `core.py` is stdlib + PyYAML, three functions, no network. If your code can modify an outbound message or inject context, you can host pidgin; the wiring patterns (and the safety rules that come with them) are in [docs/INSTALL.md](docs/INSTALL.md).
 
 ## Use
 
+Mostly you don't; that's the point. When you want to look: `/pidgin` in Claude Code or Telegram gives the status block, and **[docs/USAGE.md](docs/USAGE.md)** covers everything else (stats vs audit, the toggles, growing your codebook with the miner, exactly what egress will and will not touch).
+
 ```
-python3 cli.py stats              # what egress + ingress saved, separately
-python3 cli.py audit              # assembled-call accounting (the honest denominator)
-python3 cli.py translate "msg"    # preview a reading
-python3 cli.py egress on|off      # outbound compression toggle
-python3 cli.py show on            # display translations inline
-python3 cli.py enable|disable     # master switch, hot-read, no restarts
-python3 miner.py scan             # mine your history for codebook candidates
+/pidgin                           # status: switches, saved tokens, codebook
+/pidgin stats 7 | audit 7         # detail / assembled-call accounting
+/pidgin scan | proposals          # mine your history, review candidates
+/pidgin approve ha Home Assistant
 python3 test_smoke.py             # verify an install
 ```
 

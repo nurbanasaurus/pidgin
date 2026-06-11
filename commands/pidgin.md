@@ -11,8 +11,10 @@ arguments: "$ARGUMENTS".
   to `python3 ${CLAUDE_PLUGIN_ROOT}/cli.py <args>`.
 - `on` / `off`: run `python3 ${CLAUDE_PLUGIN_ROOT}/cli.py enable|disable`.
 - `egress on|off` and `show on|off`: pass through to cli.py unchanged.
+- `scan [days]`: run `python3 ${CLAUDE_PLUGIN_ROOT}/miner.py scan [days]`.
 - `proposals`: run `python3 ${CLAUDE_PLUGIN_ROOT}/miner.py list`, then offer
   approve/reject per entry.
+- `approve <code> [expansion]` / `reject <code>`: pass through to miner.py.
 
 Toggles are hot-read by every pidgin surface; no restart needed. Confirm the
 new state after flipping.

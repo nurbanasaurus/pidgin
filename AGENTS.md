@@ -35,8 +35,15 @@ Fallback: clone the repo, run `./install.sh`. It merges the hook into `~/.claude
 ## After any install
 
 - Run the smoke test: `python3 test_smoke.py` (must print ALL PASS).
-- Show the human: `python3 cli.py translate "send the cr to the team"` and `python3 cli.py stats`.
-- Tell the human their codebook lives at `codebook.yaml` (gitignored, personal) and grows via `miner.py scan` (requires a Hermes-style SQLite history at `~/.hermes/state.db` or `PIDGIN_STATE_DB`; on other stacks, add entries manually or via `miner.py approve`).
+- Show the human: `python3 cli.py translate "send the cr to the team"` and `python3 cli.py status`.
+- Tell the human: `/pidgin` is their status command (Claude Code and Hermes
+  platforms), `docs/USAGE.md` is the manual, and their codebook lives at
+  `codebook.yaml` (gitignored, personal). It grows via `miner.py scan`
+  (needs a Hermes-style SQLite history at `~/.hermes/state.db` or
+  `PIDGIN_STATE_DB`; on other stacks, add entries manually or via
+  `miner.py approve`).
+- Suggest `cli.py show on` for the first day so the human can see each
+  translation while trust builds.
 
 ## Rules
 

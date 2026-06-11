@@ -109,8 +109,41 @@ def _handle_pidgin(raw_args: str) -> str:
             if args[0] == "stats":
                 days = float(args[1]) if len(args) > 1 else 7.0
                 return status_text(days)
-            return ("Usage: /pidgin | /pidgin on|off | /pidgin egress on|off | "
-                    "/pidgin show on|off | /pidgin stats [days]")
+            if args[0] == "proposals":
+                import miner
+                props = (miner._load_yaml(miner.PROPOSALS).get("proposals") or {})
+                if not props:
+                    return "no proposals pending. run a scan with: /pidgin scan"
+                lines = [f"{len(props)} proposal(s) pending:"]
+                for code, p in props.items():
+                    exp = p.get("expansion") or "?"
+                    lines.append(f"  {code} = {exp} [{p.get('kind','?')}]")
+                lines.append("approve: /pidgin approve <code> [expansion]")
+                lines.append("reject:  /pidgin reject <code>")
+                return "\n".join(lines)
+            if args[0] == "scan":
+                import miner
+                days = float(args[1]) if len(args) > 1 else 30.0
+                props = miner.scan(days)
+                return f"scanned {days:g}d of history: {len(props)} proposal(s). /pidgin proposals to review."
+            if args[0] == "approve" and len(args) > 1:
+                import io, contextlib, miner
+                # raw_args preserves case for the expansion text
+                rest = raw_args.strip().split(None, 2)
+                expansion = rest[2] if len(rest) > 2 else None
+                buf = io.StringIO()
+                with contextlib.redirect_stdout(buf):
+                    miner.approve(args[1], expansion)
+                return buf.getvalue().strip() or "done"
+            if args[0] == "reject" and len(args) > 1:
+                import io, contextlib, miner
+                buf = io.StringIO()
+                with contextlib.redirect_stdout(buf):
+                    miner.reject(args[1])
+                return buf.getvalue().strip() or "done"
+            return ("Usage: /pidgin | on|off | egress on|off | show on|off | "
+                    "stats [days] | proposals | scan [days] | "
+                    "approve <code> [expansion] | reject <code>")
         return status_text()
     except Exception as exc:
         return f"pidgin status failed: {exc}"
