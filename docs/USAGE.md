@@ -111,7 +111,7 @@ order); duration shorthand (months/minutes ambiguity). If verification
 can't prove every number and name survived, the original ships.
 
 There is deliberately no LLM paraphrasing in the send path. A survival
-check can't catch "Oscar pays Luis" flipping to "Luis pays Oscar", so
+check can't catch "Alex pays Sam" flipping to "Sam pays Alex", so
 paraphrase compression stays offline until that's a solved problem.
 
 ## Honest expectations, one more time

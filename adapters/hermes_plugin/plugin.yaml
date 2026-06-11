@@ -1,6 +1,6 @@
 name: pidgin-gate
 version: 0.1.0
-description: "Action-gated confidence check for dense/telegraphic input. Expands codebook shorthand as injected context; when a message requests an action but contains uncertain shorthand, instructs the model to echo its reading in one line before acting. Fails open: no codebook, no yaml, any exception -> no injection. STAGED PROTOTYPE: copy this directory into ~/.hermes/plugins/ to enable."
+description: "Action-gated confidence check for dense/telegraphic input. Expands codebook shorthand as injected context; when a message requests an action but contains uncertain shorthand, instructs the model to echo its reading in one line before acting. Fails open: no codebook, no yaml, any exception -> no injection. Installed by install.sh; enable with: hermes plugins enable pidgin-gate."
 author: pidgin
 hooks:
   - pre_llm_call

@@ -103,9 +103,10 @@ def cmd_audit(days: float) -> int:
     totals from the Hermes state.db messages table. Compare days before and
     after enabling egress to see the real win, not the user-string delta."""
     import sqlite3
-    db = Path.home() / ".hermes" / "state.db"
+    import os
+    db = Path(os.getenv("PIDGIN_STATE_DB") or Path.home() / ".hermes" / "state.db")
     if not db.exists():
-        print("no state.db (audit is Hermes-only for now)")
+        print("no message db found (audit needs a Hermes-style state.db or PIDGIN_STATE_DB)")
         return 1
     con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
     rows = con.execute(

@@ -26,8 +26,8 @@ def egress_smoke() -> bool:
     """Deterministic compression must preserve payloads, names, numbers;
     fall back rather than risk meaning."""
     ok = True
-    r = compress_text('Hey, could you please send Luis this: "ship it" thanks!', BOOK)
-    good = '"ship it"' in r["text"] and "Luis" in r["text"] and "please" not in r["text"]
+    r = compress_text('Hey, could you please send Sam this: "ship it" thanks!', BOOK)
+    good = '"ship it"' in r["text"] and "Sam" in r["text"] and "please" not in r["text"]
     ok &= good
     print(f"[{'OK ' if good else 'FAIL'}] egress strips filler, freezes payload: {r['text']}")
     r2 = compress_text("increase the timeout by 50 percent, not to 50", BOOK)

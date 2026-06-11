@@ -5,11 +5,11 @@
 pidgin is a token-compression layer between you and your AI. **You type like a normal person; the model receives a tightened version; nothing changes for you.**
 
 ```
-you type:    Hey, could you please send Luis this exact message: "the build is
-             fixed, ship it" and please cc Oscar on the git repository thread. Thanks!
+you type:    Hey, could you please send Sam this exact message: "the build is
+             fixed, ship it" and please cc Alex on the git repository thread. Thanks!
 
-model sees:  send Luis this exact message: "the build is fixed, ship it"
-             and cc Oscar on repo thread.
+model sees:  send Sam this exact message: "the build is fixed, ship it"
+             and cc Alex on repo thread.
 ```
 
 Notice what survived untouched: the quoted payload (byte-identical), every name, the meaning. That's the design constraint everything else serves.
@@ -33,7 +33,7 @@ We had this design adversarially reviewed (two independent AI reviewers, full co
 - **Egress on natural chatty messages: 10-25% of message tokens.** Deterministic, zero meaning risk, zero latency. On already-terse messages it does nothing, by design.
 - **Ingress with adopted shorthand: up to ~60% (2.6x), measured with tiktoken on real messages.** That ceiling needs *you* to type dense; pidgin makes that safe rather than forcing it.
 - **Your message is the smallest part of the API call.** System prompts, history, and injected context dominate. pidgin's biggest single win in our own stack was compressing a 109-token scheduler boilerplate that rode every automated job, down to 41. Hunt your templates; `cli.py audit` shows the assembled-call picture so you measure the right denominator.
-- **What we deliberately did NOT build**: an LLM that paraphrases your words in the hot path. A token-survival check is structurally blind to role reversal ("Oscar pays Luis" vs "Luis pays Oscar"), question-to-imperative flips, modality loss, and by-vs-to on numbers. Until that's solved, paraphrase compression stays out of the send path. Deterministic or nothing.
+- **What we deliberately did NOT build**: an LLM that paraphrases your words in the hot path. A token-survival check is structurally blind to role reversal ("Alex pays Sam" vs "Sam pays Alex"), question-to-imperative flips, modality loss, and by-vs-to on numbers. Until that's solved, paraphrase compression stays out of the send path. Deterministic or nothing.
 - Small local models misread dense text (measured: a 7B was intent-equivalent on 1 of 5 dense tasks), so pidgin's tier switch *expands* text for them instead. Compression is for models that can take it.
 
 ## Install
