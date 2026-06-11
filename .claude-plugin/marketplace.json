@@ -1,0 +1,13 @@
+{
+  "name": "pidgin",
+  "owner": {
+    "name": "nurbanasaurus"
+  },
+  "plugins": [
+    {
+      "name": "pidgin",
+      "source": "./",
+      "description": "A learned shorthand layer between you and your AI. Type normal, the model gets a tightened copy; type dense, the glossary and action gate keep it safe."
+    }
+  ]
+}
