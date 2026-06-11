@@ -85,6 +85,7 @@ cli gui sdk ide pr ci cd qa dev prod env git diff cron faq eta id ids
 2fa mfa sso oauth jwt rss s3 ec2 k8s vm iso mac pc app apps wifi nfc
 txt md log yml toml ini sh zsh png jpg jpeg gif svg mp3 mp4 wav zip
 ssd hdd nas dns ssl th ll
+vin vw bmw gm suv ev rpm mpg mph psi oem abs ac dmv
 """.split())
 
 
@@ -153,7 +154,7 @@ def _looks_like_shorthand(tok: str) -> bool:
     """Heuristic for an unrecognized abbreviation worth flagging.
 
     ALL-CAPS 2-5 chars (WMB, CR) or short vowelless lowercase (tg, pls).
-    Capitalized words (Alex, Sam) are treated as proper nouns and skipped.
+    Capitalized words (Oscar, Luis) are treated as proper nouns and skipped.
     """
     if tok.isupper() and 2 <= len(tok) <= 5 and tok.isalpha():
         return True
@@ -186,7 +187,7 @@ def analyze(text: str, codebook: dict) -> Analysis:
             expanded.append(codebook[low]["expansions"][0])
             continue
         # NOTE: no COMMON guard here. "text"/"check"/"clean" are common words
-        # AND action verbs; the old guard masked them so "text Sam re dinner"
+        # AND action verbs; the old guard masked them so "text Luis re dinner"
         # never registered a messaging action (found in 2026-06-11 design
         # review). A false manifest is harmless (non-interrupting context).
         if low in ACTION_VERBS:
