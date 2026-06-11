@@ -371,6 +371,57 @@ def transparency_line(a: Analysis) -> str | None:
     return f"pidgin: {', '.join(parts)}{gauge}{gate}"
 
 
+def status_text(days: float = 7.0) -> str:
+    """One compact status block used by /pidgin (Telegram), /pidgin (Claude
+    Code), and cli.py status. Plain text, telegram-safe, no markdown."""
+    cfg = load_config()
+    n = saved = verbose = interrupts = 0
+    eg_n = eg_saved = eg_orig = 0
+    codes_hit: dict = {}
+    cutoff = time.time() - days * 86400
+    if STATS_PATH.exists():
+        for ln in STATS_PATH.read_text().splitlines():
+            try:
+                r = json.loads(ln)
+            except json.JSONDecodeError:
+                continue
+            if r.get("ts", 0) < cutoff:
+                continue
+            if r.get("kind") == "egress":
+                eg_n += 1
+                eg_saved += r.get("saved", 0)
+                eg_orig += r.get("orig_tokens", 0)
+                continue
+            n += 1
+            saved += r.get("saved", 0)
+            verbose += r.get("verbose_tokens", 0)
+            interrupts += 1 if r.get("decision") == "confirm" else 0
+    try:
+        book = load_codebook(PIDGIN_DIR / "codebook.yaml")
+        ncodes = len(book)
+    except Exception:
+        ncodes = 0
+    pending = 0
+    try:
+        if yaml and (PIDGIN_DIR / "proposals.yaml").exists():
+            pending = len((yaml.safe_load((PIDGIN_DIR / "proposals.yaml").read_text())
+                           or {}).get("proposals") or {})
+    except Exception:
+        pass
+    state = "ON" if cfg.get("enabled", True) else "OFF (master switch)"
+    eg_state = "on" if cfg.get("egress", True) else "off"
+    tr_state = "shown" if cfg.get("transparency") else "hidden"
+    lines = [
+        f"pidgin {state} | egress {eg_state} | translation {tr_state}",
+        f"last {days:g}d egress: {eg_n} msgs compressed, ~{eg_saved} tokens saved"
+        + (f" ({100*eg_saved/eg_orig:.0f}% of those msgs)" if eg_orig else ""),
+        f"last {days:g}d ingress: {n} turns glossed, ~{saved} tokens saved by dense typing, "
+        f"{interrupts} confirm interrupt(s)",
+        f"codebook: {ncodes} codes, {pending} proposal(s) pending review",
+    ]
+    return "\n".join(lines)
+
+
 # ── egress compressor ─────────────────────────────────────────────────────────
 # Deterministic ONLY, per the 2026-06-11 two-reviewer design loop (Aria +
 # Claude). The LLM-rewrite layer was CUT from the hot path: a token-survival

@@ -148,7 +148,8 @@ def main() -> int:
     if cmd in ("enable", "disable"):
         return cmd_toggle("enabled", cmd == "enable")
     if cmd == "status":
-        print(json.dumps(load_config(), indent=2))
+        from core import status_text
+        print(status_text())
         return 0
     if cmd == "translate":
         return cmd_translate(" ".join(args[1:]))

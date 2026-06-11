@@ -85,5 +85,45 @@ def _on_pre_llm_call(**kwargs):
         return None
 
 
+def _handle_pidgin(raw_args: str) -> str:
+    """Slash command: /pidgin [on|off | egress on|off | show on|off | stats N]."""
+    if not _IMPORT_OK:
+        return "pidgin core not importable; check " + str(PIDGIN_DIR)
+    try:
+        from core import load_config, save_config, status_text
+        args = (raw_args or "").strip().lower().split()
+        if args:
+            cfg = load_config()
+            if args[0] in ("on", "off"):
+                cfg["enabled"] = args[0] == "on"
+                save_config(cfg)
+                return f"pidgin master switch: {args[0]}"
+            if args[0] == "egress" and len(args) > 1 and args[1] in ("on", "off"):
+                cfg["egress"] = args[1] == "on"
+                save_config(cfg)
+                return f"egress compression: {args[1]}"
+            if args[0] == "show" and len(args) > 1 and args[1] in ("on", "off"):
+                cfg["transparency"] = args[1] == "on"
+                save_config(cfg)
+                return f"translation line: {'shown' if args[1] == 'on' else 'hidden'}"
+            if args[0] == "stats":
+                days = float(args[1]) if len(args) > 1 else 7.0
+                return status_text(days)
+            return ("Usage: /pidgin | /pidgin on|off | /pidgin egress on|off | "
+                    "/pidgin show on|off | /pidgin stats [days]")
+        return status_text()
+    except Exception as exc:
+        return f"pidgin status failed: {exc}"
+
+
 def register(ctx) -> None:
     ctx.register_hook("pre_llm_call", _on_pre_llm_call)
+    try:
+        ctx.register_command(
+            "pidgin",
+            handler=_handle_pidgin,
+            description="Pidgin token layer: status, toggles, stats.",
+            args_hint="[on|off | egress on|off | show on|off | stats N]",
+        )
+    except Exception as exc:  # older cores without register_command: hook still works
+        logger.debug("pidgin-gate: command registration failed: %s", exc)
