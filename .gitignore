@@ -1,0 +1,15 @@
+# Personal data: your codebook IS your dialect; it never belongs in git.
+codebook.yaml
+config.yaml
+stats.jsonl
+proposals.yaml
+rejected.yaml
+compat_results.json
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# OS
+.DS_Store

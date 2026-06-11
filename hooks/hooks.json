@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/adapters/claude_code/pidgin_hook.py",
+            "timeout": 10,
+            "statusMessage": "pidgin gate"
+          }
+        ]
+      }
+    ]
+  }
+}

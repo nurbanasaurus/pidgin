@@ -1,0 +1,17 @@
+# pidgin starter codebook: generic entries only, no personal dialect.
+# install.sh copies this to codebook.yaml on machines that don't have one.
+# The miner (miner.py scan) grows it from the owner's own chat history.
+codes:
+  cc: Claude Code
+  tg: Telegram
+  y/n: yes/no
+  perms: permissions
+  repo: git repository
+  cal: calendar
+  dash: dashboard
+  cb: codebook
+  cr:
+    expansions:
+    - change request
+    - code review
+    confidence: 0.5

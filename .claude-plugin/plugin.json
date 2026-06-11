@@ -1,0 +1,8 @@
+{
+  "name": "pidgin",
+  "version": "0.1.0",
+  "description": "A learned shorthand layer between you and your AI. Type dense, stay safe: glossary injection, action-gated confirmation, and a codebook mined from your own chat history.",
+  "author": {
+    "name": "nurbanasaurus"
+  }
+}
