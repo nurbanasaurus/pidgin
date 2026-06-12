@@ -150,12 +150,36 @@ def _tokens(text: str):
     return re.findall(r"[A-Za-z0-9/'+-]+", text)
 
 
+_DICT_WORDS: set | None = None
+
+
+def _dict_words() -> set:
+    """Short real-word vocabulary from the system dictionary (lazy, cached).
+    Replaces hand-growing the COMMON stoplist one false positive at a time:
+    any actual English word, however cased, is not personal shorthand.
+    Fail-open: no dictionary file -> empty set, COMMON still applies."""
+    global _DICT_WORDS
+    if _DICT_WORDS is None:
+        words: set = set()
+        try:
+            for w in Path("/usr/share/dict/words").read_text().splitlines():
+                if 2 <= len(w) <= 6:
+                    words.add(w.lower())
+        except OSError:
+            pass
+        _DICT_WORDS = words
+    return _DICT_WORDS
+
+
 def _looks_like_shorthand(tok: str) -> bool:
     """Heuristic for an unrecognized abbreviation worth flagging.
 
     ALL-CAPS 2-5 chars (WMB, CR) or short vowelless lowercase (tg, pls).
-    Capitalized words (Oscar, Luis) are treated as proper nouns and skipped.
+    Capitalized words (Alex, Sam) are treated as proper nouns and skipped.
+    Real dictionary words in any casing are never shorthand.
     """
+    if tok.lower() in _dict_words():
+        return False
     if tok.isupper() and 2 <= len(tok) <= 5 and tok.isalpha():
         # Only vowelless caps count (WMB, CR). Caps-for-emphasis dictionary
         # words (SKILL, PATCH, FIX) and roman numerals are not shorthand
