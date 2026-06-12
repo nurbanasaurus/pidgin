@@ -157,6 +157,13 @@ def _looks_like_shorthand(tok: str) -> bool:
     Capitalized words (Oscar, Luis) are treated as proper nouns and skipped.
     """
     if tok.isupper() and 2 <= len(tok) <= 5 and tok.isalpha():
+        # Only vowelless caps count (WMB, CR). Caps-for-emphasis dictionary
+        # words (SKILL, PATCH, FIX) and roman numerals are not shorthand
+        # (2026-06-12: 6 overnight false interrupts from this class).
+        if set(tok.lower()) & VOWELS:
+            return False
+        if set(tok) <= set("IVXLCM"):
+            return False
         return True
     if tok.islower() and 2 <= len(tok) <= 5 and tok.isalpha() and not (set(tok) & VOWELS):
         return True
