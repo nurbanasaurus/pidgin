@@ -99,6 +99,29 @@ codes:
 only those are used for outbound compression. Personal codes stay
 ingress-only, where the glossary earns its cost.
 
+## Closed-grammar templates
+
+When your WHOLE message parses into a known grammar, it compresses by
+parsing rather than guessing: "Could you please remind me in 8 days to call
+the bank?" becomes `remind in 8d: call the bank`. Built-ins cover reminders
+(one-shot and recurring stay distinct grammars), status questions, todo
+adds, web searches, and "send a message to X saying Y". Partial matches
+never rewrite ("I was reminded of something funny" is untouched), months
+are never abbreviated (m means minutes, always), and the same
+number/proper-noun verification applies afterward.
+
+Add your own in `templates.yaml` next to your codebook:
+
+```yaml
+templates:
+  - pattern: '^search the docs for (.+)$'
+    emit: 'docs search: \1'
+```
+
+Hot-reloaded; a bad regex or malformed entry is skipped silently rather
+than breaking your chat. Every install differs, so pidgin treats your
+files as authoritative and its own defaults as the fallback.
+
 ## What egress will and will not touch
 
 Will: greetings, "could you please" padding, trailing thanks, whitespace,

@@ -38,6 +38,14 @@ def egress_smoke() -> bool:
     good = "maybe" in r3["text"] and "?" in r3["text"]
     ok &= good
     print(f"[{'OK ' if good else 'FAIL'}] egress never strips modality or questions")
+    r4 = compress_text("Could you please remind me in 8 days to call the bank?", BOOK)
+    good = r4["text"] == "remind in 8d: call the bank"
+    ok &= good
+    print(f"[{'OK ' if good else 'FAIL'}] closed-grammar template: {r4['text']}")
+    r5 = compress_text("remind me in 3 months to renew the cert", BOOK)
+    good = "months" in r5["text"]
+    ok &= good
+    print(f"[{'OK ' if good else 'FAIL'}] months never abbreviated (m=minutes hazard)")
     return ok
 
 

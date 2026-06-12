@@ -492,6 +492,96 @@ _FILLER_RES = [
 _NUM_RE = re.compile(r"\d+(?:\.\d+)?")
 _CAP_RE = re.compile(r"\b[A-Z][a-zA-Z]+\b")
 
+# ── closed-grammar templates ─────────────────────────────────────────────────
+# Compression by PARSING, not paraphrase: a template only fires when the whole
+# message matches a known grammar, and the emission is bijective (the dense
+# form expands back to the same intent). Distinct grammars stay distinct:
+# "in 8 days" (one-shot) and "every 8 days" (recurring) never collapse into
+# the same form, and months are deliberately not an accepted unit (the
+# m=minutes round-trip hazard). The final number/proper-noun verification in
+# compress_text covers templated output too: any doubt, the original ships.
+#
+# Users extend via templates.yaml next to the codebook:
+#   templates:
+#     - pattern: '^search the web for (.+)$'
+#       emit: 'web search: \1'
+# Bad or missing user file: silently ignored (unknown installs vary; never
+# let a config typo break someone's chat).
+
+_UNIT_ABBR = {"minute": "m", "hour": "h", "day": "d", "week": "w"}
+
+
+def _dur(n: str, unit: str) -> str:
+    return n + _UNIT_ABBR[unit.lower().rstrip("s")]
+
+
+_TPL_TAIL = r"[.!?]?\s*$"
+# Polite-request prefixes are part of these closed grammars: "could you remind
+# me in 8 days to X?" and "remind me in 8 days to X" are the same canonical
+# reminder. This is NOT generic modal stripping; it only applies where the
+# full message parses into a known imperative grammar.
+_POLITE = r"^(?:(?:can|could|would|will) you )?(?:please )?"
+DEFAULT_TEMPLATES = [
+    (re.compile(_POLITE + r"remind me in (\d+) (minutes?|hours?|days?|weeks?) to (.+?)" + _TPL_TAIL, re.I | re.S),
+     lambda m: f"remind in {_dur(m.group(1), m.group(2))}: {m.group(3)}"),
+    (re.compile(_POLITE + r"remind me every (\d+) (minutes?|hours?|days?|weeks?) to (.+?)" + _TPL_TAIL, re.I | re.S),
+     lambda m: f"remind every {_dur(m.group(1), m.group(2))}: {m.group(3)}"),
+    (re.compile(_POLITE + r"set a reminder (?:for|in) (\d+) (minutes?|hours?|days?|weeks?) to (.+?)" + _TPL_TAIL, re.I | re.S),
+     lambda m: f"remind in {_dur(m.group(1), m.group(2))}: {m.group(3)}"),
+    (re.compile(r"^what(?:'s| is) the status (?:of|on) (.+?)\??\s*$", re.I | re.S),
+     lambda m: f"status: {m.group(1)}?"),
+    (re.compile(r"^add (.+?) to (?:my |the )?todo(?: list)?" + _TPL_TAIL, re.I | re.S),
+     lambda m: f"todo: {m.group(1)}"),
+    (re.compile(r"^search the web for (.+?)" + _TPL_TAIL, re.I | re.S),
+     lambda m: f"web search: {m.group(1)}"),
+    (re.compile(r"^send (?:a )?(?:message|msg|text) to (\w+) saying (.+?)" + _TPL_TAIL, re.I | re.S),
+     lambda m: f"msg {m.group(1)}: {m.group(2)}"),
+]
+
+_USER_TEMPLATES: list | None = None
+_USER_TPL_MTIME = -1.0
+
+
+def load_templates() -> list:
+    """Built-ins plus user templates.yaml, hot-reloaded. Any malformed user
+    entry (bad regex, missing keys, wrong types) is skipped silently."""
+    global _USER_TEMPLATES, _USER_TPL_MTIME
+    path = PIDGIN_DIR / "templates.yaml"
+    try:
+        mtime = path.stat().st_mtime if path.exists() else 0.0
+    except OSError:
+        mtime = 0.0
+    if _USER_TEMPLATES is None or mtime != _USER_TPL_MTIME:
+        user: list = []
+        try:
+            if yaml and path.exists():
+                raw = yaml.safe_load(path.read_text()) or {}
+                for ent in raw.get("templates") or []:
+                    try:
+                        rx = re.compile(ent["pattern"], re.I | re.S)
+                        emit = str(ent["emit"])
+                        user.append((rx, lambda m, e=emit: m.expand(e)))
+                    except Exception:
+                        continue
+        except Exception:
+            user = []
+        _USER_TEMPLATES = user
+        _USER_TPL_MTIME = mtime
+    return DEFAULT_TEMPLATES + _USER_TEMPLATES
+
+
+def _apply_templates(text: str) -> str:
+    """Whole-message template match only; partial matches never rewrite."""
+    t = text.strip()
+    for rx, emit in load_templates():
+        m = rx.match(t)
+        if m and m.end() >= len(t.rstrip()):
+            try:
+                return emit(m)
+            except Exception:
+                return text
+    return text
+
 
 def compress_text(text: str, codebook: dict) -> dict:
     """Deterministic egress compression. Returns {text, changed, savings_est}.
@@ -514,6 +604,9 @@ def compress_text(text: str, codebook: dict) -> dict:
         for m in fr.finditer(work):
             stripped_words |= set(_CAP_RE.findall(m.group(0)))
         work = fr.sub("", work)
+
+    # 2.5 closed-grammar templates (whole-message, bijective)
+    work = _apply_templates(work)
 
     # 3. transparent-code substitution, longest expansion first
     subs = []
@@ -541,7 +634,11 @@ def compress_text(text: str, codebook: dict) -> dict:
     # Codes may absorb capitalized words ("Claude Code" -> cc), so compare
     # against the re-expanded form, which restores them.
     reexpanded = expand_text(work, codebook)
-    caps_needed = set(_CAP_RE.findall(original)) - stripped_words
+    # proper-noun protection: capitalized words that are NOT dictionary words
+    # (Sam, Alex, Tailscale). Sentence-case dictionary words ("What", "Could")
+    # are grammar, not names; templates may legitimately consume them.
+    caps_needed = {w for w in _CAP_RE.findall(original)
+                   if w.lower() not in _dict_words()} - stripped_words
     ok = (sorted(_NUM_RE.findall(original)) == sorted(_NUM_RE.findall(reexpanded))
           and caps_needed <= set(_CAP_RE.findall(reexpanded) + _CAP_RE.findall(work)))
     if not ok or not work:

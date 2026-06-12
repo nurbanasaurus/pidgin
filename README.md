@@ -20,6 +20,8 @@ Notice what survived untouched: the quoted payload (byte-identical), every name,
 - *Span freezing*: quoted text, code fences, URLs, file paths, and emails are untouchable
 - *Filler strip*: politeness and throat-clearing only ("could you please", greetings, trailing thanks); never modals or auxiliaries, so a musing can't become an order
 - *Transparent-code substitution*: only codebook entries any frontier model reads without a glossary
+- *Closed-grammar templates*: whole-message grammars compress by parsing, not paraphrase ("Could you please remind me in 8 days to call the bank?" -> `remind in 8d: call the bank`); extend yours in templates.yaml
+- *Re-quote dedup*: paragraphs repeated byte-identical from earlier in the conversation become a short marker (provably lossless)
 - *Verification*: every number and proper noun must survive into the compressed form, or your original text ships unchanged. Fallback-on-any-doubt is the rule.
 
 **Ingress: if you drift into shorthand yourself (most people do, fast), pidgin makes it safe.** A glossary of your personal codes is injected so any model recovers your intent, and the action gate interrupts only when an *action* rides on an *ambiguous* reading: a misread question costs one clarifying turn, so questions never interrupt. Measured interrupt rate on real traffic: 0%.
@@ -72,7 +74,6 @@ Compression research keeps shrinking machine context with lossy ML. pidgin bets 
 
 ## Roadmap
 
-- Exact-match re-quote dedup wired into more surfaces (function exists: `dedup_exact`)
 - Dense output mode (the model answers in your dialect on surfaces you choose; output tokens are where the money is)
 - OpenAI-compatible proxy mode
 - Codebook merge tooling
